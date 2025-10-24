@@ -40,27 +40,46 @@ def create(ip):
         }
     }
 
+    # ตรวจสอบก่อนว่ามีอยู่แล้วหรือไม่
     check = requests.get(api_url, auth=AUTH, headers=HEADERS, verify=False)
 
-    # เช็กว่ามีข้อมูล interface จริงไหม
-    if check.status_code == 200 and "ietf-interfaces:interface" in check.text:
+    if check.status_code == 200:
+        # มี interface เดิมอยู่แล้ว → ห้ามสร้างซ้ำ
         return f"Cannot create: Interface loopback {STUDENT_ID}"
-    elif check.status_code in [404, 200]:
+
+    elif check.status_code == 404:
+        # ไม่พบ interface → สร้างใหม่
         resp = requests.put(api_url, data=json.dumps(yang), auth=AUTH, headers=HEADERS, verify=False)
         if 200 <= resp.status_code <= 299:
             return f"Interface loopback {STUDENT_ID} is created successfully"
-        return f"Error (create): HTTP {resp.status_code}"
-    return f"Error checking interface: HTTP {check.status_code}"
+        else:
+            return f"Error (create): HTTP {resp.status_code}"
+
+    else:
+        # กรณีอื่น ๆ (เช่น 401 / 500)
+        return f"Error checking interface: HTTP {check.status_code}"
 
 
 def delete(ip):
     api_url, _, _ = _urls(ip)
-    resp = requests.delete(api_url, auth=AUTH, headers=HEADERS, verify=False)
-    if 200 <= resp.status_code <= 299:
-        return f"Interface loopback {STUDENT_ID} is deleted successfully"
-    elif resp.status_code == 404:
+    # ตรวจว่ามี interface อยู่จริงไหมก่อน
+    check = requests.get(api_url, auth=AUTH, headers=HEADERS, verify=False)
+
+    if check.status_code == 404:
+        # ถ้าไม่มีอยู่ → ลบไม่ได้
         return f"Cannot delete: Interface loopback {STUDENT_ID}"
-    return f"Error (delete): HTTP {resp.status_code}"
+
+    elif check.status_code == 200:
+        # ถ้ามีอยู่ → ลบได้
+        resp = requests.delete(api_url, auth=AUTH, headers=HEADERS, verify=False)
+        if 200 <= resp.status_code <= 299:
+            return f"Interface loopback {STUDENT_ID} is deleted successfully"
+        else:
+            return f"Error (delete): HTTP {resp.status_code}"
+
+    else:
+        return f"Error checking interface: HTTP {check.status_code}"
+
 
 def enable(ip):
     api_url, _, _ = _urls(ip)
