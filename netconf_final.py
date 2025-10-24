@@ -110,19 +110,29 @@ def status(ip):
         with _connect(ip) as m:
             r = m.get(filter=flt)
             d = xmltodict.parse(r.xml)
+
+            # ถ้าไม่มีข้อมูลใน reply -> interface ไม่มีจริง
+            if not d.get("rpc-reply", {}).get("data"):
+                return f"No Interface loopback {STUDENT_ID}"
+
             try:
                 iface = d["rpc-reply"]["data"]["interfaces-state"]["interface"]
             except Exception:
                 return f"No Interface loopback {STUDENT_ID}"
-            admin = iface.get("admin-status")
-            oper  = iface.get("oper-status")
-            if admin=="up" and oper=="up":
+
+            admin = iface.get("admin-status", "unknown")
+            oper = iface.get("oper-status", "unknown")
+
+            if admin == "up" and oper == "up":
                 return f"Interface loopback {STUDENT_ID} is enabled"
-            elif admin=="down" and oper=="down":
+            elif admin == "down" and oper == "down":
                 return f"Interface loopback {STUDENT_ID} is disabled"
-            return f"Interface loopback {STUDENT_ID}: admin={admin}, oper={oper}"
-    except Exception:
-        return "Error (status)"
+            else:
+                return f"Interface loopback {STUDENT_ID}: admin={admin}, oper={oper}"
+
+    except Exception as e:
+        return f"Error (status): {str(e)}"
+
 
 def dispatch(action, target_ip):
     if action=="create":  return create(target_ip)
