@@ -8,6 +8,7 @@ import netconf_final as net_mod
 import netmiko_final as nm
 import ansible_final as ans
 
+
 load_dotenv()
 
 ACCESS_TOKEN = os.environ["WEBEX_ACCESS_TOKEN"]
@@ -55,6 +56,103 @@ def need_ip():
         return True
     return False
 
+# def handle_command(body: str):
+#     global current_method, current_ip
+
+#     prefix = f"/{STUDENT_ID} "
+#     if not body.startswith(prefix):
+#         return
+
+#     # reset IP ทุกครั้งที่เริ่ม command ใหม่ของ student
+#     current_ip = None
+
+#     cmd = body[len(prefix):].strip()
+#     if not cmd:
+#         post_text("Error: No command or unknown command")
+#         return
+
+#     parts = cmd.split()
+
+#     # --- ตั้ง method ---
+#     if parts[0].lower() in ["restconf", "netconf"]:
+#         current_method = parts[0].lower()
+#         post_text(f"Ok: {current_method.capitalize()}")
+#         return
+
+#     # --- ตั้ง IP ---
+#     if re.match(r"^10\.0\.15\.(6[1-5])$", parts[0]):
+#         ip = parts[0]
+#         if not validate_ip(ip):
+#             post_text("Error: IP not allowed")
+#             return
+#         current_ip = ip
+#         # ถ้าใส่แค่ IP เฉยๆ
+#         if len(parts) == 1:
+#             post_text("Error: No command found.")
+#             return
+#         else:
+#             action = parts[1].lower()
+#             rest = parts[2:]
+#     else:
+#         # ถ้าไม่ใช่ IP → ถือว่าเป็น action เดี่ยว
+#         action = parts[0].lower()
+#         rest = parts[1:]
+#     if action == "motd":
+#         rest = ans.set_motd(current_ip, " ".join(rest)) #connect with spacebar naja by tee
+#         if rest ==  True:
+#             res = "Ok: success"
+#         else:
+#             res = "Error"
+#         post_text(res)
+
+#     # --- ตรวจ method / IP ก่อน ---
+#     elif action in ["create", "delete", "enable", "disable", "status"]:
+#             # ถ้าไม่มี method → error ทันที
+#         if need_method():
+#             return
+#         # ถ้าไม่มี IP → error ทันที
+#         if need_ip():
+#             return
+
+#         # --- RESTCONF ---
+#         if current_method == "restconf":
+#             res = rest_mod.dispatch(action, target_ip=current_ip)
+
+#             # เติม suffix ตามเงื่อนไข
+#             if "successfully" in res:
+#                 res = f"{res} using Restconf"
+#             elif "Cannot" in res:
+#                 res = res
+#             elif any(word in res for word in ["enabled", "disabled", "No Interface"]):
+#                 res = f"{res} (checked by Restconf)"
+#             post_text(res)
+
+#         # --- NETCONF ---
+#         elif current_method == "netconf":
+#             res = net_mod.dispatch(action, target_ip=current_ip)
+
+#             if "successfully" in res:
+#                 res = f"{res} using Netconf"
+#             elif "Cannot" in res:
+#                 res = res
+#             elif any(word in res for word in ["enabled", "disabled", "No Interface"]):
+#                 res = f"{res} (checked by Netconf)"
+#             post_text(res)
+            
+#         elif action == "motd":
+#             if len(rest) == 0:
+#                 # ไม่มีข้อความหลัง motd → อ่านค่า MOTD ปัจจุบัน
+#                 msg = nm.get_motd(current_ip)
+#                 post_text(msg)
+#             else:
+#                 # มีข้อความหลัง motd → ตั้งค่า MOTD ใหม่ด้วย ansible
+#                 ok = ans.set_motd(current_ip, " ".join(rest))
+#                 if ok:
+#                     post_text("Ok: success")
+#                 else:
+#                     post_text("Error: failed to set MOTD")
+
+#         return
 def handle_command(body: str):
     global current_method, current_ip
 
@@ -97,20 +195,32 @@ def handle_command(body: str):
         action = parts[0].lower()
         rest = parts[1:]
 
+    # --- ✅ MOTD SECTION ---
+    if action == "motd":
+        if len(rest) == 0:
+            # ไม่มีข้อความหลัง motd → อ่านค่า MOTD ปัจจุบัน
+            msg = nm.get_motd(current_ip)
+            post_text(msg)
+        else:
+            # มีข้อความหลัง motd → ตั้งค่า MOTD ใหม่ด้วย ansible
+            ok = ans.set_motd(current_ip, " ".join(rest))
+            if ok:
+                post_text("Ok: success")
+            else:
+                post_text("Error: failed to set MOTD")
+        return
+    # --- ✅ END MOTD SECTION ---
+
     # --- ตรวจ method / IP ก่อน ---
     if action in ["create", "delete", "enable", "disable", "status"]:
-            # ถ้าไม่มี method → error ทันที
         if need_method():
             return
-        # ถ้าไม่มี IP → error ทันที
         if need_ip():
             return
 
         # --- RESTCONF ---
         if current_method == "restconf":
             res = rest_mod.dispatch(action, target_ip=current_ip)
-
-            # เติม suffix ตามเงื่อนไข
             if "successfully" in res:
                 res = f"{res} using Restconf"
             elif "Cannot" in res:
@@ -122,7 +232,6 @@ def handle_command(body: str):
         # --- NETCONF ---
         elif current_method == "netconf":
             res = net_mod.dispatch(action, target_ip=current_ip)
-
             if "successfully" in res:
                 res = f"{res} using Netconf"
             elif "Cannot" in res:
@@ -130,10 +239,13 @@ def handle_command(body: str):
             elif any(word in res for word in ["enabled", "disabled", "No Interface"]):
                 res = f"{res} (checked by Netconf)"
             post_text(res)
+
         return
 
     else:
         post_text("Error: No command found.")
+
+
 
 def main_loop():
     while True:
