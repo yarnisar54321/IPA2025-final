@@ -97,7 +97,7 @@ def disable(ip):
             if "<ok/>" in r.xml:
                 return f"Interface loopback {STUDENT_ID} is shutdowned successfully"
     except Exception:
-        return f"Cannot shutdown: Interface loopback {STUDENT_ID}"
+        return f"Cannot shutdown: Interface loopback {STUDENT_ID} (checked by Netconf)"
 
 def status(ip):
     flt = f"""
