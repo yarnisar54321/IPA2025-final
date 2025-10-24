@@ -58,10 +58,12 @@ def need_ip():
 def handle_command(body: str):
     global current_method, current_ip
 
-    # แยกคำสั่งหลัง prefix "/<STUDENT_ID> "
     prefix = f"/{STUDENT_ID} "
     if not body.startswith(prefix):
         return
+
+    # reset IP ทุกครั้งที่เริ่ม command ใหม่ของ student
+    current_ip = None
 
     cmd = body[len(prefix):].strip()
     if not cmd:
@@ -69,106 +71,67 @@ def handle_command(body: str):
         return
 
     parts = cmd.split()
-    # รูปแบบตั้ง method
-    if parts[0].lower() in ["restconf","netconf"]:
+
+    # --- ตั้ง method ---
+    if parts[0].lower() in ["restconf", "netconf"]:
         current_method = parts[0].lower()
         post_text(f"Ok: {current_method.capitalize()}")
         return
 
-    # รูปแบบตั้ง IP (เดี่ยวๆ)
+    # --- ตั้ง IP ---
     if re.match(r"^10\.0\.15\.(6[1-5])$", parts[0]):
         ip = parts[0]
         if not validate_ip(ip):
             post_text("Error: IP not allowed")
             return
         current_ip = ip
-        # ถัดไปมี action อีกหรือไม่
+        # ถ้าใส่แค่ IP เฉยๆ
         if len(parts) == 1:
             post_text("Error: No command found.")
             return
-
         else:
-            # มี action ต่อท้าย
             action = parts[1].lower()
-            rest = parts[2:]  # อาจเป็นข้อความ MOTD
+            rest = parts[2:]
     else:
-        # ไม่ได้ขึ้นต้นด้วย method หรือ IP → เป็น action เดี่ยว (ต้องมี method/IP ตั้งไว้ก่อน)
+        # ถ้าไม่ใช่ IP → ถือว่าเป็น action เดี่ยว
         action = parts[0].lower()
         rest = parts[1:]
 
-    # ตรวจ method/ip ก่อนสั่งจริง
-    if action in ["create","delete","enable","disable","status","motd"]:
-        if action != "motd":  # งาน loopback
-            if need_method(): return
-            if need_ip(): return
+    # --- ตรวจ method / IP ก่อน ---
+    if action in ["create", "delete", "enable", "disable", "status"]:
+            # ถ้าไม่มี method → error ทันที
+        if need_method():
+            return
+        # ถ้าไม่มี IP → error ทันที
+        if need_ip():
+            return
 
-            # --- RESTCONF ---
-    if current_method == "restconf":
-        res = rest_mod.dispatch(action, target_ip=current_ip)
+        # --- RESTCONF ---
+        if current_method == "restconf":
+            res = rest_mod.dispatch(action, target_ip=current_ip)
 
-        # ถ้าเป็นข้อความสำเร็จ → เติม using Restconf
-        if "successfully" in res:
-            res = f"{res} using Restconf"
-        # ถ้าเป็น Cannot → ไม่ต้องเติม suffix
-        elif "Cannot" in res:
-            res = f"{res}"
-        # ถ้าเป็น enabled/disabled/No Interface → เติม (checked by Restconf)
-        elif any(word in res for word in ["enabled", "disabled", "No Interface"]):
-            res = f"{res} (checked by Restconf)"
+            # เติม suffix ตามเงื่อนไข
+            if "successfully" in res:
+                res = f"{res} using Restconf"
+            elif "Cannot" in res:
+                res = res
+            elif any(word in res for word in ["enabled", "disabled", "No Interface"]):
+                res = f"{res} (checked by Restconf)"
+            post_text(res)
 
-        post_text(res)
+        # --- NETCONF ---
+        elif current_method == "netconf":
+            res = net_mod.dispatch(action, target_ip=current_ip)
 
-
-# --- NETCONF ---
-    elif current_method == "netconf":
-        res = net_mod.dispatch(action, target_ip=current_ip)
-
-        # ถ้าเป็นข้อความสำเร็จ → เติม using Netconf
-        if "successfully" in res:
-            res = f"{res} using Netconf"
-        # ถ้าเป็น Cannot → ไม่ต้องเติม suffix
-        elif "Cannot" in res:
-            res = f"{res}"
-        # ถ้าเป็น enabled/disabled/No Interface → เติม (checked by Netconf)
-        elif any(word in res for word in ["enabled", "disabled", "No Interface"]):
-            res = f"{res} (checked by Netconf)"
-
-        post_text(res)
-
-
-
-        # action == "motd"
-        # รูปแบบ: /ID <IP> motd <ข้อความ...>  → set ด้วย Ansible
-        #        /ID <IP> motd               → อ่านด้วย Netmiko/TextFSM
-        if not current_ip:
-            # ถ้าไม่ได้เริ่มด้วย IP ก็เช็คว่าผู้ใช้ตั้ง current_ip ไว้ก่อนแล้วหรือยัง
-            if need_ip(): return
-
-        if rest:
-            banner_text = " ".join(rest)
-            ok = ans.set_motd(target_ip=current_ip, banner_text=banner_text)
-            post_text("Ok: success" if ok else "Error: Ansible MOTD")
-        else:
-            motd = nm.read_motd(ip=current_ip)
-            if motd:
-                post_text(motd)
-            else:
-                post_text("Error: No MOTD Configured")
+            if "successfully" in res:
+                res = f"{res} using Netconf"
+            elif "Cannot" in res:
+                res = res
+            elif any(word in res for word in ["enabled", "disabled", "No Interface"]):
+                res = f"{res} (checked by Netconf)"
+            post_text(res)
         return
 
-    elif action in ["gigabit_status","showrun"]:
-        # ใช้ Netmiko / Ansible แบบเดิม
-        if action == "gigabit_status":
-            out = nm.gigabit_status(ip=current_ip) if current_ip else nm.gigabit_status()
-            post_text(out)
-        else:  # showrun
-            res = ans.showrun()
-            if res == "ok":
-                # ansible_final จะส่งไฟล์กลับเองอยู่แล้วในบางเวอร์ชัน
-                post_text("show running config sent.")
-            else:
-                post_text(res or "ok")
-        return
     else:
         post_text("Error: No command found.")
 
