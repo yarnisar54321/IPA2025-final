@@ -102,21 +102,45 @@ def disable(ip):
     return f"Error (disable): HTTP {resp.status_code}"
 
 def status(ip):
-    _, _, cfg = _urls(ip)
-    url = f"{cfg}/ietf-interfaces:interfaces/interface={IFNAME}"
-    resp = requests.get(url, auth=AUTH, headers=HEADERS, verify=False)
+    api_url, api_status, _ = _urls(ip)
+
+    # ขั้นแรก: ตรวจจาก config ก่อน
+    cfg = requests.get(api_url, auth=AUTH, headers=HEADERS, verify=False)
+    if cfg.status_code == 200:
+        try:
+            iface = cfg.json()["ietf-interfaces:interface"]
+            enabled = iface.get("enabled", False)
+            if enabled:
+                return f"Interface loopback {STUDENT_ID} is enabled"
+            else:
+                return f"Interface loopback {STUDENT_ID} is disabled"
+        except Exception:
+            pass  # ถ้าอ่าน config ไม่ได้ จะลอง operational ต่อ
+
+    # ถ้าไม่เจอใน config → ลอง operational (interfaces-state)
+    resp = requests.get(api_status, auth=AUTH, headers=HEADERS, verify=False)
     if resp.status_code == 200:
         try:
             iface = resp.json()["ietf-interfaces:interface"]
-            enabled = iface.get("enabled", False)
-            return (f"Interface loopback {STUDENT_ID} is enabled"
-                    if enabled else
-                    f"Interface loopback {STUDENT_ID} is disabled")
-        except Exception as e:
-            return f"Error reading interface: {e}"
-    elif resp.status_code == 404:
+            admin = iface.get("admin-status", "unknown")
+            oper = iface.get("oper-status", "unknown")
+
+            if admin == "up" and oper == "up":
+                return f"Interface loopback {STUDENT_ID} is enabled"
+            elif admin == "down" and oper == "down":
+                return f"Interface loopback {STUDENT_ID} is disabled"
+            else:
+                return f"Interface loopback {STUDENT_ID}: admin={admin}, oper={oper}"
+        except Exception:
+            return f"No Interface loopback {STUDENT_ID}"
+
+    elif cfg.status_code == 404 and resp.status_code == 404:
         return f"No Interface loopback {STUDENT_ID}"
-    return f"Error (status): HTTP {resp.status_code}"
+
+    return f"Error (status): HTTP cfg={cfg.status_code} / op={resp.status_code}"
+
+
+
 
 def dispatch(action, target_ip):
     if action=="create":  return create(target_ip)
