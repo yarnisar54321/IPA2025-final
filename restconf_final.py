@@ -98,7 +98,7 @@ def disable(ip):
     if 200 <= resp.status_code <= 299:
         return f"Interface loopback {STUDENT_ID} is shutdowned successfully"
     elif resp.status_code == 404:
-        return f"Cannot shutdown: Interface loopback {STUDENT_ID}"
+        return f"Cannot shutdown: Interface loopback {STUDENT_ID} (checked by Restconf)"
     return f"Error (disable): HTTP {resp.status_code}"
 
 def status(ip):
