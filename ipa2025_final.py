@@ -84,8 +84,9 @@ def handle_command(body: str):
         current_ip = ip
         # ถัดไปมี action อีกหรือไม่
         if len(parts) == 1:
-            post_text(f"Ok: IP {current_ip}")
+            post_text("Error: No command found.")
             return
+
         else:
             # มี action ต่อท้าย
             action = parts[1].lower()
@@ -101,30 +102,40 @@ def handle_command(body: str):
             if need_method(): return
             if need_ip(): return
 
-            # ยิงไปที่ method ที่เลือก โดยส่ง IP runtime เข้า module
-            if current_method == "restconf":
-                res = rest_mod.dispatch(action, target_ip=current_ip)
-                # แปะคำว่า using Restconf/Netconf ตามโจทย์
-                if "successfully" in res or "Cannot" in res or "No Interface" in res or "Error" in res:
-                    if "using Restconf" not in res and "using Netconf" not in res:
-                        if "successfully" in res or "Cannot" in res:
-                            res = f"{res} using Restconf"
-                        elif "enabled" in res or "disabled" in res:
-                            res = f"{res} (checked by Restconf)"
-                post_text(res)
+            # --- RESTCONF ---
+    if current_method == "restconf":
+        res = rest_mod.dispatch(action, target_ip=current_ip)
 
-            elif current_method == "netconf":
-                res = net_mod.dispatch(action, target_ip=current_ip)
-                if "successfully" in res or "Cannot" in res or "No Interface" in res or "Error" in res:
-                    if "using Restconf" not in res and "using Netconf" not in res:
-                        if "successfully" in res or "Cannot" in res:
-                            res = f"{res} using Netconf"
-                        elif "enabled" in res or "disabled" in res:
-                            res = f"{res} (checked by Netconf)"
-                post_text(res)
-            else:
-                post_text("Error: No method specified")
-            return
+        # ถ้าเป็นข้อความสำเร็จ → เติม using Restconf
+        if "successfully" in res:
+            res = f"{res} using Restconf"
+        # ถ้าเป็น Cannot → ไม่ต้องเติม suffix
+        elif "Cannot" in res:
+            res = f"{res}"
+        # ถ้าเป็น enabled/disabled/No Interface → เติม (checked by Restconf)
+        elif any(word in res for word in ["enabled", "disabled", "No Interface"]):
+            res = f"{res} (checked by Restconf)"
+
+        post_text(res)
+
+
+# --- NETCONF ---
+    elif current_method == "netconf":
+        res = net_mod.dispatch(action, target_ip=current_ip)
+
+        # ถ้าเป็นข้อความสำเร็จ → เติม using Netconf
+        if "successfully" in res:
+            res = f"{res} using Netconf"
+        # ถ้าเป็น Cannot → ไม่ต้องเติม suffix
+        elif "Cannot" in res:
+            res = f"{res}"
+        # ถ้าเป็น enabled/disabled/No Interface → เติม (checked by Netconf)
+        elif any(word in res for word in ["enabled", "disabled", "No Interface"]):
+            res = f"{res} (checked by Netconf)"
+
+        post_text(res)
+
+
 
         # action == "motd"
         # รูปแบบ: /ID <IP> motd <ข้อความ...>  → set ด้วย Ansible
