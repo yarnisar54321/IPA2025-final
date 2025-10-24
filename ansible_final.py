@@ -4,9 +4,7 @@ import requests
 from dotenv import load_dotenv, find_dotenv
 
 # โหลดค่าจากไฟล์ .env
-
 load_dotenv(find_dotenv())
-
 
 WEBEX_ACCESS_TOKEN = os.getenv("WEBEX_ACCESS_TOKEN")
 WEBEX_ROOM_ID = os.getenv("WEBEX_ROOM_ID")
@@ -19,26 +17,21 @@ def showrun():
     แล้วส่งไฟล์ .txt กลับไปที่ Webex Room
     """
     try:
-        # 1 รัน ansible-playbook
         cmd = ["ansible-playbook", "-i", "hosts", "playbook.yaml"]
         result = subprocess.run(cmd, capture_output=True, text=True)
         output = result.stdout + "\n" + result.stderr
         print(output)
 
-        # 2 ตรวจว่าทำงานสำเร็จหรือไม่
         if "failed=0" not in output.lower():
             return "Error: Ansible"
 
-        # 3 ตรวจว่าไฟล์ถูกสร้างจริง
         filename = f"show_run_{STUDENT_ID}_{ROUTER_NAME}.txt"
         if not os.path.exists(filename):
             return f"Error: File {filename} not found"
 
-        # 4 ส่งไฟล์กลับไปยัง Webex Room
         print(f"Sending {filename} to Webex room...")
-
         url = "https://webexapis.com/v1/messages"
-        headers = {"Authorization": WEBEX_ACCESS_TOKEN} 
+        headers = {"Authorization": WEBEX_ACCESS_TOKEN}
         with open(filename, "rb") as f:
             files = {
                 "roomId": (None, WEBEX_ROOM_ID),
@@ -48,7 +41,7 @@ def showrun():
             resp = requests.post(url, headers=headers, files=files)
 
         if resp.status_code == 200:
-            return 
+            return "Ok: showrun completed"
         else:
             return f"Error sending file to Webex (HTTP {resp.status_code})"
 
@@ -56,3 +49,30 @@ def showrun():
         return f"Error (showrun): {str(e)}"
 
 
+def set_motd(target_ip, banner_text):
+    """
+    ใช้ ansible ตั้งค่า MOTD banner บน router
+    """
+    try:
+        with open("hosts", "w") as hosts:
+            hosts.write(f"router1 ansible_host={target_ip} ansible_user=admin ansible_password=cisco ansible_network_os=ios ansible_connection=network_cli ansible_command_timeout=180 ansible_connect_timeout=60")
+    
+        # เรียก playbook.yaml แล้วส่งตัวแปร target_ip และ motd_text ไป
+        cmd = [
+            "ansible-playbook",
+            "motd.yaml",
+            "-i", f"hosts",
+            "-e", f"motd_text='{banner_text}'"
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        if result.returncode == 0:
+            print("MOTD set successfully!")
+            return True
+        else:
+            print("Ansible Error:", result.stderr)
+            return False
+
+    except Exception as e:
+        print("Error running Ansible:", e)
+        return False

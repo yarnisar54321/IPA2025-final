@@ -1,0 +1,10 @@
+# PLAY 2 : ตั้งค่า MOTD Banner
+- name: Set MOTD banner on router
+  hosts: router1 # from hosts
+  gather_facts: no
+
+  tasks:
+    - name: Configure MOTD Banner
+      ios_banner:
+        banner: motd
+        text: "{{ motd_text }}"
