@@ -38,13 +38,33 @@ def create(ip):
     </interface>
   </interfaces>
 </config>"""
+
     try:
         with _connect(ip) as m:
+            # 🔹 ตรวจสอบก่อนว่ามี interface นี้อยู่แล้วหรือยัง
+            filter_xml = f"""
+<filter>
+  <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces">
+    <interface>
+      <name>{IFNAME}</name>
+    </interface>
+  </interfaces>
+</filter>"""
+
+            check = m.get_config(source="running", filter=filter_xml)
+            if IFNAME in check.xml:
+                return f"Cannot create: Interface loopback{STUDENT_ID}"
+
+
+            # 🔹 ถ้ายังไม่มี → ค่อยสร้างใหม่
             r = m.edit_config(target="running", config=xml)
             if "<ok/>" in r.xml:
                 return f"Interface loopback {STUDENT_ID} is created successfully"
-    except Exception:
-        return f"Cannot create: Interface loopback {STUDENT_ID}"
+            else:
+                return f"Failed to create: Interface loopback {STUDENT_ID}"
+
+    except Exception as e:
+        return f"Cannot create: Interface loopback {STUDENT_ID} ({e})"
 
 def delete(ip):
     xml = f"""
